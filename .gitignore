@@ -7,5 +7,7 @@
 *.o
 *.lst
 *.srec
+test/
+.vscode
 
 
