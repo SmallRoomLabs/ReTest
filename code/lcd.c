@@ -618,13 +618,13 @@ void drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg
     uint8_t  *bitmap = (uint8_t *)pgm_read_pointer(&gfxFont->bitmap);
 
     uint16_t bo = pgm_read_word(&glyph->bitmapOffset);
-    uint8_t  w  = pgm_read_byte(&glyph->width),
-             h  = pgm_read_byte(&glyph->height),
-             xa = pgm_read_byte(&glyph->xAdvance);
+    uint8_t  w  = pgm_read_byte(&glyph->width);
+    uint8_t  h  = pgm_read_byte(&glyph->height);
+    // uint8_t  xa = pgm_read_byte(&glyph->xAdvance);
     int8_t   xo = pgm_read_byte(&glyph->xOffset),
              yo = pgm_read_byte(&glyph->yOffset);
-    uint8_t  xx, yy, bits, bit = 0;
-    int16_t  xo16, yo16;
+    uint8_t  xx, yy, bits=0, bit = 0;
+    int16_t  xo16=0, yo16=0;
 
     if(size > 1) {
       xo16 = xo;
