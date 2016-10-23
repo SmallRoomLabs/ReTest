@@ -6,6 +6,7 @@
 //
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -18,7 +19,8 @@
 #include "lcd.h"
 #include "rotaryenc.h"
 
-//#include "fonts/TomThumb.h"
+//#include "fonts/FreeSans9pt7b.h"
+#include "fonts/FreeSansBold9pt7b.h"
     
 //
 // D8   PB0 
@@ -71,6 +73,9 @@ volatile uint16_t sampleCnt;
 volatile uint16_t tickMs;         // RTC updated by Timer2
 volatile uint16_t encValue;       // Rotary Encoder value upd by Timer2
 uint16_t encMin,encMax;           // Min & Max limits for Rotary Encoder
+volatile uint16_t speed;
+#define ENC_THRESHOLD       2     // Threshold for fast turning
+#define ENC_SPEEDMULTIPLIER 20    // Increment when turning fast
 
 //
 // TimerCounter0 Compare Match A
@@ -102,25 +107,38 @@ ISR (TIMER0_COMPA_vect) {
 //
 ISR (TIMER2_COMPA_vect, ISR_NOBLOCK) {  
     uint8_t dir;
+    static uint16_t lastValue;
+    static uint8_t step=1;
 
     dir=PollRotaryEncoder(QUAD_A_STATUS, QUAD_B_STATUS);
     if (dir==DIR_CCW) {
-        if (encValue<encMax) {
-            encValue++;
+        if (encValue+step<encMax) {
+            encValue+=step;
         } else {
             encValue=encMax;
         }
     }
     if (dir==DIR_CW) {
-        if (encValue>encMin) {
-            encValue--;
+        if ((encValue-step>encMin) && (encValue>step)) {
+            encValue-=step;
         } else {
             encValue=encMin;
         }
     }
 
     tickMs++;
+    // 256 ms has passed, check is user is turning the knob fast
+    if (!(tickMs&0xFF)) {
+      speed=abs(lastValue-encValue);
+      if (speed>ENC_THRESHOLD*step) {
+        step=ENC_SPEEDMULTIPLIER;
+      } else {
+        step=1;
+      }
+      lastValue=encValue;
+    }
 }
+
 
 int main(void) {
 
@@ -142,32 +160,32 @@ int main(void) {
   
   DDRC=(1<<PC0);  // PC0 drives the relay (inverted)
   PORTC=0x3F;     // Turns on pullup on PC1..PC5 and deactivates Relay 
-  encMin=0;
-  encMax=65535;
+
+  encMin=10;
+  encMax=10000;
+  encValue=1000;
 
   SpiInit();
   LcdInit(40);
-//  LcdSetFont(&TomThumb);
   LcdSetFont(NULL);
+  LcdSetFont(&FreeSansBold9pt7b);
   setTextSize(1);
   LcdRefresh();
   _delay_ms(500);
   LcdClear();
 
   for(;;) {
+    LcdClear();
     char s[10];
-    setTextSize(2);
+    setTextSize(1);
     setTextColor(BLACK,WHITE);
-    setCursor(0,0);
-    sprintf(s,"%05u",encValue);
+    setCursor(0,15);
+    sprintf(s,"%u ms",encValue);
     LcdPrint(s);
 
-    setCursor(0,20);
-    sprintf(s,"%05u",tickMs);
-    LcdPrint(s);
 
     LcdRefresh();
-    _delay_ms(10);
+    _delay_ms(100);
   }
 
 }
