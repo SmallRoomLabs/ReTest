@@ -20,17 +20,41 @@
 
 //#include "fonts/TomThumb.h"
     
-// Some macros that make the code more readable
-#define output_low(port,pin) port &= ~(1<<pin)
-#define output_high(port,pin) port |= (1<<pin)
-#define set_input(portdir,pin) portdir &= ~(1<<pin)
-#define set_output(portdir,pin) portdir |= (1<<pin)
+//
+// D8   PB0 
+// D9   PB1 
+// D10  PB2 SPI SS   > SPI Select for SD
+// D11  PB3 SPI MOSI > SPI Data Out for LCD & SD
+// D12  PB4 SPI MISO < SPI Data In for SD
+// D13  PB5 SPI SCK  > SPI Clock for LCD & SD
+// PB6  XTAL1          ---
+// PB7  XTAL2          ---
+// A0   PC0          > Relay coil
+// A1   PC1          < Button 1
+// A2   PC2          < Button 2
+// A3   PC3          < Encoder Button
+// A4   PC4          < Encoder Quadrature B
+// A5   PC5          < Encoder Quadrature A
+// A6   ADC6
+// A7   ADC7
+// A6   PC6 RESET      ---
+// D0   PD0 UART RX  < USB/Serial converter
+// D1   PD1 UART TX  > USB/Serial converter
+// D2   PD2          > LCD Control line D/C
+// D3   PD3          > LCD SPI Enable (CE)
+// D4   PD4          > LCD Reset
+// D5   PD5 
+// D6   PD6          < Relay NO pin
+// D7   PD7          < Relay NC pin
+//
 
-#define BUT1 !(PINC & (1<<PC1))
-#define BUT2 !(PINC & (1<<PC2))
-#define BUT_A !(PINC & (1<<PC3))
-#define QUAD_A !(PINC & (1<<PC4))
-#define QUAD_B !(PINC & (1<<PC5))
+#define RELAY_COIL_PIN    PC0
+#define BUT1_STATUS       !(PINC & (1<<PC1))    // Push button
+#define BUT2_STATUS       !(PINC & (1<<PC2))    // Push button
+#define QUAD_BUTTON       !(PINC & (1<<PC3))    // Encoder button
+#define QUAD_B_STATUS     !(PINC & (1<<PC4))    // Encoder Out1
+#define QUAD_A_STATUS     !(PINC & (1<<PC5))    // Encoder Out2
+#define RELAY_NONC_STATUS (PIND & ((1<<PD6)|(1<<PD7)))
 
 //
 // databits  ???? ???? ???? ??dd
@@ -44,32 +68,42 @@
 volatile uint16_t samples[512];
 volatile uint16_t sampleCnt;
 
-volatile uint16_t encValue,cnt=0;
-uint16_t encMin,encMax;
+volatile uint16_t tickMs;         // RTC updated by Timer2
+volatile uint16_t encValue;       // Rotary Encoder value upd by Timer2
+uint16_t encMin,encMax;           // Min & Max limits for Rotary Encoder
 
 //
-// Timer0 overflow interrupt
+// TimerCounter0 Compare Match A
+// Samples the Relay NC/NO pins every 10uS and puts
+// a timestamp in the relay sample/event table if
+// any change in the pins are detected
 //
 ISR (TIMER0_COMPA_vect) {  
-  // static uint16_t tick;
-  // static uint8_t oldPins=0;
-  // uint8_t pins;
+  static uint16_t tick;
+  static uint8_t oldPins=0;
+  uint8_t pins;
 
-  // if (sampleCnt==512) {
-  //   tick=0;
-  // } else {
-  //   pins=PINC;
-  //   if (pins!=oldPins) {
-  //     oldPins=pins;
-  //     samples[sampleCnt]=tick|(pins<<14);
-  //     sampleCnt++;
-  //   }
-  //   tick++;
-  // }
+  if (sampleCnt==512) {
+    tick=0;
+  } else {
+    pins=RELAY_NONC_STATUS;
+    if (pins!=oldPins) {
+      oldPins=pins;
+      samples[sampleCnt]=tick|(pins<<14);
+      sampleCnt++;
+    }
+    tick++;
+  }
+}
+
+
+//
+// TimerCounter2 Compare Match A
+//
+ISR (TIMER2_COMPA_vect, ISR_NOBLOCK) {  
     uint8_t dir;
 
-    cnt++;
-    dir=PollRotaryEncoder(QUAD_A, QUAD_B);
+    dir=PollRotaryEncoder(QUAD_A_STATUS, QUAD_B_STATUS);
     if (dir==DIR_CCW) {
         if (encValue<encMax) {
             encValue++;
@@ -84,15 +118,26 @@ ISR (TIMER0_COMPA_vect) {
             encValue=encMin;
         }
     }
+
+    tickMs++;
 }
 
 int main(void) {
 
+  // Setup Timer0 to generate 10us interrupts
+  // used for sampling relay
   TCCR0A |= (1 << WGM01);   // Timer Mode CTC
-  OCR0A = 160;              // 16MHz/160 ticks = 10uS
+  OCR0A = 160;              // 16MHz/160 ticks = 10us
   TIMSK0 |= (1 << OCIE0A);  // Set the ISR COMPA vect
-//  TCCR0B |= (1 << CS00);    // No Prescaler, Start the timer
-  TCCR0B |= (1 << CS00)|(1 << CS01);    // /64, Start the timer
+  TCCR0B |= (1 << CS00);    // No Prescaler, Start the timer
+
+  // Setup Timer2 to generate 1ms interrupts
+  // used for RTC and user interface
+  TCCR2A |= (1 << WGM21);   // Timer Mode CTC
+  OCR2A = 250;              // 16MHz/(250*64) ticks = 1ms
+  TIMSK2 |= (1 << OCIE2A);  // Set the ISR COMPA vect
+  TCCR2B |= (1 << CS22);    // Prescale /64, Start the timer
+
   sei();                    // Enable interrupts
   
   DDRC=(1<<PC0);  // PC0 drives the relay (inverted)
@@ -107,32 +152,22 @@ int main(void) {
   setTextSize(1);
   LcdRefresh();
   _delay_ms(500);
-
-  char s[10];
-  volatile uint8_t v;
-
+  LcdClear();
 
   for(;;) {
-    LcdFillRect(0,0,84,48,WHITE);
+    char s[10];
     setTextSize(2);
     setTextColor(BLACK,WHITE);
-    // strcpy(s,"-----");
-    // if (BUT1) s[0]='x';
-    // if (BUT2) s[1]='x';
-    // if (BUT_A) s[2]='x';
-    // if (QUAD_A) s[3]='x';
-    // if (QUAD_B) s[4]='x';
     setCursor(0,0);
-    sprintf(s,"%05d",encValue);
+    sprintf(s,"%05u",encValue);
     LcdPrint(s);
 
     setCursor(0,20);
-    sprintf(s,"%05d",cnt);
+    sprintf(s,"%05u",tickMs);
     LcdPrint(s);
 
     LcdRefresh();
     _delay_ms(10);
-  
   }
 
 }
