@@ -139,6 +139,196 @@ ISR (TIMER2_COMPA_vect, ISR_NOBLOCK) {
     }
 }
 
+#define HIGH 0x8000
+#define MID  0x8000+0x4000
+#define LOW  0x4000
+
+void FakeDataOff() {
+  uint16_t p;
+  uint16_t t;
+  uint8_t i;
+  memset((void *)samples,0,sizeof(samples));
+  p=0;
+  t=0;
+  samples[p++]=HIGH+t;
+
+  // After a random time go middle
+  t+=4*100+(rand()%(2*100));
+  samples[p++]=MID+t;
+
+  // Bounce between HIGH and MID for a while
+  for (i=0; i<1+rand()%3; i++) {
+    t+=10+(rand()%(100));
+    samples[p++]=HIGH+t;
+    t+=10+(rand()%(100));
+    samples[p++]=MID+t;
+  }
+
+  // Stay at MID for a while
+  t+=400+(rand()%(400));
+
+  // Bounce between LOW and MID for a while
+  for (i=0; i<2+rand()%10; i++) {
+    t+=10+(rand()%(100));
+    samples[p++]=LOW+t;
+    t+=10+(rand()%(100));
+    samples[p++]=MID+t;
+  }
+
+  // Finish up at LOW
+    t+=10+(rand()%(100));
+    samples[p++]=LOW+t;
+  // Finish up at LOW
+    t+=10+(rand()%(100));
+    samples[p++]=LOW+t;
+  // Finish up at LOW
+    t+=10+(rand()%(100));
+    samples[p++]=LOW+t;
+}
+
+
+void FakeDataOn() {
+  uint16_t p;
+  uint16_t t;
+  uint8_t i;
+  memset((void *)samples,0,sizeof(samples));
+  p=0;
+  t=0;
+  samples[p++]=LOW+t;
+
+  // After a random time go middle
+  t+=4*100+(rand()%(2*100));
+  samples[p++]=MID+t;
+
+  // Bounce between LOW and MID for a while
+  for (i=0; i<1+rand()%3; i++) {
+    t+=10+(rand()%(100));
+    samples[p++]=LOW+t;
+    t+=10+(rand()%(100));
+    samples[p++]=MID+t;
+  }
+
+  // Stay at MID for a while
+  t+=400+(rand()%(400));
+
+  // Bounce between HIGH and MID for a while
+  for (i=0; i<2+rand()%10; i++) {
+    t+=10+(rand()%(100));
+    samples[p++]=HIGH+t;
+    t+=10+(rand()%(100));
+    samples[p++]=MID+t;
+  }
+
+  // Finish up at HIGH
+    t+=10+(rand()%(100));
+    samples[p++]=HIGH+t;
+  // Finish up at HIGH
+    t+=10+(rand()%(100));
+    samples[p++]=HIGH+t;
+  // Finish up at HIGH
+    t+=10+(rand()%(100));
+    samples[p++]=HIGH+t;
+}
+
+#define GRAPHHEIGTH 4
+//
+//
+//
+void PlotLine(uint8_t x, uint8_t yBase, uint16_t v, uint16_t lastV) {
+  uint8_t yh, ym, yl;
+
+  yh=yBase-GRAPHHEIGTH;
+  ym=yBase;
+  yl=yBase+GRAPHHEIGTH;
+
+  if (v==HIGH) {
+    if (v==lastV) {
+      LcdSetPixel(x,yh, BLACK);
+      return;
+    }
+    if (lastV==MID) {
+      LcdDrawLine(x,yh, x,ym, BLACK);
+    } else {
+      LcdDrawLine(x,yh, x,yl, BLACK);
+    }
+    return;
+  }
+
+  if (v==MID) {
+    if (v==lastV) {
+      LcdSetPixel(x,ym, BLACK);
+      return;      
+    } 
+    if (lastV==HIGH) {
+      LcdDrawLine(x,ym, x,yh, BLACK);
+    } else {
+      LcdDrawLine(x,ym, x,yl, BLACK);
+    }
+    return;
+  }
+
+  if (v==LOW) {
+    if (v==lastV) {
+      LcdSetPixel(x,yl, BLACK);      
+      return;
+    }
+    if (lastV==MID) {
+      LcdDrawLine(x,yl, x,ym, BLACK);
+    } else {
+      LcdDrawLine(x,yl, x,yh, BLACK);
+    }
+    return;
+  }
+}
+//8550
+
+///
+///
+///
+void PlotGraph(uint8_t yBase, uint16_t *time1, uint16_t *time2) {
+  uint8_t x;
+  uint16_t p;
+  uint16_t v,lastV;
+  uint16_t maxt;
+  uint16_t t,t1,t2;
+  uint16_t factor;
+
+  maxt=0;
+  for (p=0; p<512; p++) {
+    t=samples[p]&0x3FFF;
+    if (t>maxt) {
+      maxt=t;
+    }
+  }
+  *time1=samples[1]&0x3FFF;
+  *time2=maxt;
+
+  maxt=2500;
+  factor=((maxt+maxt/5)/84);
+
+  LcdDrawLine(0,yBase-GRAPHHEIGTH-1, 0,yBase+GRAPHHEIGTH+1, BLACK);
+  LcdDrawLine(83,yBase-GRAPHHEIGTH-1, 83,yBase+GRAPHHEIGTH+1, BLACK);
+
+  for (p=0; p<511; p++) {
+    v=samples[p]&0xC000;
+    if (p==0) lastV=v;
+    t1=samples[p]&0x3FFF;
+    t2=samples[p+1]&0x3FFF;
+    if (t2==0) {
+      p=512;        // Exits the outer loop at next iteration
+      t2=83*factor; // Make sure the last value goes all the way
+      v=lastV;
+    }
+    for (t=t1; t<t2; t++){
+      x=t/factor;
+      if (x>83) x=83;
+      PlotLine(x,yBase,v,lastV);
+      lastV=v;
+    }
+  }
+
+}
+
 
 int main(void) {
 
@@ -172,20 +362,39 @@ int main(void) {
   setTextSize(1);
   LcdRefresh();
   _delay_ms(500);
-  LcdClear();
 
+  LcdSetFont(NULL);
+  setTextSize(1);
+  setTextColor(BLACK,WHITE);
+
+    uint16_t cnt=0;
   for(;;) {
-    LcdClear();
     char s[10];
-    setTextSize(1);
-    setTextColor(BLACK,WHITE);
-    setCursor(0,15);
-    sprintf(s,"%u ms",encValue);
+    uint16_t t1,t2;
+
+    LcdClear();
+
+    FakeDataOn();
+    PlotGraph(5,&t1,&t2);
+    setCursor(0,5+8);
+    t1/=10;
+    t2/=10;
+    sprintf(s,"On  %2d.%d/%2d.%d",t1/10,t1%10,t2/10,t2%10);
     LcdPrint(s);
 
+    FakeDataOff();
+    PlotGraph(30,&t1,&t2);
+    setCursor(0,30+8);
+    t1/=10;
+    t2/=10;
+    if (tickMs<10000) {
+      cnt+=10;
+    }
+    t1=cnt;
+    sprintf(s,"Off %2d.%d/%2d.%d",t1/10,t1%10,t2/10,t2%10);
+    LcdPrint(s);
 
     LcdRefresh();
-    _delay_ms(100);
   }
 
 }
