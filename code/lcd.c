@@ -361,9 +361,9 @@ void LcdInit(uint8_t contrast) {
 	PORTD |= _BV(LCD_DC_PIN) | _BV(LCD_CE_PIN) |  _BV(LCD_RST_PIN);
 
 	// Briefly activate reset pin on LCD
-	_delay_ms(100);
+	_delay_ms(50);
 	CLEAR_RST_PIN; 
-	_delay_ms(10);
+	_delay_ms(5);
 	SET_RST_PIN;	
 
 	LcdCommand(PCD8544_FUNCTIONSET | PCD8544_EXTENDEDINSTRUCTION );
