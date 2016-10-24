@@ -165,7 +165,7 @@ void FakeDataOff() {
   }
 
   // Stay at MID for a while
-  t+=400+(rand()%(400));
+  t+=100+(rand()%(300));
 
   // Bounce between LOW and MID for a while
   for (i=0; i<2+rand()%10; i++) {
@@ -209,7 +209,7 @@ void FakeDataOn() {
   }
 
   // Stay at MID for a while
-  t+=400+(rand()%(400));
+  t+=400+(rand()%(100));
 
   // Bounce between HIGH and MID for a while
   for (i=0; i<2+rand()%10; i++) {
@@ -303,7 +303,7 @@ void PlotGraph(uint8_t yBase, uint16_t *time1, uint16_t *time2) {
   *time1=samples[1]&0x3FFF;
   *time2=maxt;
 
-  maxt=2500;
+  maxt=1900;
   factor=((maxt+maxt/5)/84);
 
   LcdDrawLine(0,yBase-GRAPHHEIGTH-1, 0,yBase+GRAPHHEIGTH+1, BLACK);
@@ -357,6 +357,9 @@ int main(void) {
 
   SpiInit();
   LcdInit(40);
+  LcdRefresh();
+  _delay_ms(100);
+
   LcdSetFont(NULL);
   LcdSetFont(&FreeSansBold9pt7b);
   setTextSize(1);
@@ -367,7 +370,6 @@ int main(void) {
   setTextSize(1);
   setTextColor(BLACK,WHITE);
 
-    uint16_t cnt=0;
   for(;;) {
     char s[10];
     uint16_t t1,t2;
@@ -387,12 +389,10 @@ int main(void) {
     setCursor(0,30+8);
     t1/=10;
     t2/=10;
-    if (tickMs<10000) {
-      cnt+=10;
-    }
-    t1=cnt;
     sprintf(s,"Off %2d.%d/%2d.%d",t1/10,t1%10,t2/10,t2%10);
     LcdPrint(s);
+
+    _delay_ms(500);
 
     LcdRefresh();
   }
